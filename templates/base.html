@@ -24,6 +24,6 @@
     <main class="container">
         {% block content %}{% endblock %}
     </main>
-    <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

@@ -135,7 +135,7 @@
                 {% for task in tasks %}
                 <li>
                     <div class="task-summary">
-                        <span>{{ task.task_name }}</span>
+                        <span class="task-name">{{ task.task_name }}</span>
                         <small>상태: {{ task.status }}</small>
                     </div>
 
@@ -145,11 +145,8 @@
                                 <strong>기간:</strong>
                                 <span class="task-dates">{{ task.start_date.replace('T', ' ') }} ~ {{ task.end_date.replace('T', ' ') }}</span>
                             </p>
-                            {% if user_role == '팀장' %}
                             <button class="edit-task-btn">수정</button>
-                            {% endif %}
                         </div>
-                        {% if user_role == '팀장' %}
                         <form class="edit-task-form" style="display: none;">
                             <input type="text" name="task_name" value="{{ task.task_name }}" required>
                             <div class="grid">
@@ -159,6 +156,8 @@
                             <button type="submit">저장</button>
                             <button type="button" class="cancel-edit-btn">취소</button>
                         </form>
+
+                        <hr>
                         <div>
                             <strong>상태 변경/삭제:</strong>
                             <form class="update-status-form" action="{{ url_for('project.update_task_status', task_id=task.id) }}" method="POST" style="display: inline;">
@@ -171,18 +170,7 @@
                             <form class="delete-task-form" action="{{ url_for('project.delete_task', task_id=task.id) }}" method="POST" style="display: inline;">
                                 <button type="submit">삭제</button>
                             </form>
-                            {% if user_role == '팀장' %}
-                            <form class="assign-task-form" style="display: inline;">
-                                <select name="assignee_id" class="assignee-select">
-                                    <option value="">담당자 지정</option>
-                                    {% for member in members %}
-                                        <option value="{{ member[0] }}" {% if member[0] == task.assignee_id %}selected{% endif %}>{{ member[1] }}</option>
-                                    {% endfor %}
-                                </select>
-                            </form>
-                            {% endif %}
                         </div>
-                        {% endif %}
                         <hr>
                         <div class="comment-section">
                             <strong>댓글</strong>
@@ -234,7 +222,5 @@
         {% endif %}
     </div>
 
-    <script defer src="{{ url_for('static', filename='js/countdown.js') }}"></script>
-    <script defer src="{{ url_for('static', filename='js/gantt.js') }}"></script>
-    <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+
 {% endblock %}
