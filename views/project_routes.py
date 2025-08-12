@@ -2,7 +2,7 @@
 
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
-from models import Project, Task, Comment
+from models import User, Project, Task, Comment
 from datetime import datetime, timedelta
 
 # 'project' 라는 이름의 블루프린트 객체를 생성합니다.
@@ -19,23 +19,30 @@ def index():
 @login_required
 def dashboard():
     user_projects = Project.find_for_user(current_user.id)
-    assigned_tasks = Task.find_for_assignee(current_user.id)
+    assigned_tasks_data = Task.find_for_assignee(current_user.id)
+    # 데이터베이스에서 받은 튜플 리스트를 딕셔너리 리스트로 변환합니다.
+    assigned_tasks = [
+        {
+            'id': row[0],
+            'project_id': row[1],
+            'name': row[2],
+            'status': row[5],
+            'project_name': row[7]
+        } for row in assigned_tasks_data
+    ]
+
     current_time_for_input = datetime.now().strftime('%Y-%m-%dT%H:%M')
     
     return render_template('dashboard.html',
                             projects=user_projects,
-                            tasks=assigned_tasks,
+                            tasks=assigned_tasks, # 딕셔너리 리스트 전달
                             current_time=current_time_for_input)
 
 # 프로젝트 생성을 처리할 라우트를 새로 추가합니다.
 @bp.route('/projects/create', methods=['POST'])
 @login_required
 def create_project():
-    # '프로젝트 관리자'가 아니면 대시보드로 리디렉션
-    if current_user.role != '프로젝트 관리자':
-        flash('프로젝트를 생성할 권한이 없습니다.')
-        return redirect(url_for('project.dashboard'))
-    
+    # 프로젝트 생성 로직
     project_name = request.form.get('project_name')
     start_date = request.form.get('start_date')
     end_date = request.form.get('end_date')
@@ -64,6 +71,7 @@ def project_detail(project_id):
 
     current_time_for_input = datetime.now().strftime('%Y-%m-%dT%H:%M')
     user_role = Project.get_user_role(project_id, current_user.id)
+    members = Project.get_members(project_id)
 
     return render_template('project_detail.html', 
                             project=project, 
@@ -71,7 +79,8 @@ def project_detail(project_id):
                             task_progress=task_progress, 
                             time_progress=time_progress,
                             current_time=current_time_for_input,
-                            user_role=user_role)
+                            user_role=user_role,
+                            members=members)
 
 # 프로젝트 삭제
 @bp.route('/projects/<int:project_id>/delete', methods=['POST'])
@@ -97,9 +106,9 @@ def delete_project(project_id):
 @login_required
 def create_task(project_id):
     # --- 권한 확인 로직
-    if not Project.is_member(project_id, current_user.id):
-        # 실패 시 JSON으로 에러 메시지 반환
-        return jsonify({"success": False, "message": "권한이 없습니다."}), 403
+    user_role = Project.get_user_role(project_id, current_user.id)
+    if user_role != '팀장':
+        return jsonify({"success": False, "message": "작업을 생성할 권한이 없습니다."}), 403
     
     task_name = request.form.get('task_name')
     start_date = request.form.get('start_date')
@@ -134,8 +143,9 @@ def update_task_status(task_id):
         return jsonify({'success': False, 'message': '작업을 찾을 수 없습니다.'}), 404
     
     # 권한 확인 로직
-    if not Project.is_member(task.project_id, current_user.id):
-        return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
+    user_role = Project.get_user_role(task.project_id, current_user.id)
+    if user_role != '팀장':
+        return jsonify({'success': False, 'message': '작업을 수정할 권한이 없습니다.'}), 403
 
     new_status = request.form.get('status')
     if new_status:
@@ -154,12 +164,11 @@ def delete_task(task_id):
         return jsonify({'success': False, 'message': '작업을 찾을 수 없습니다.'}), 404
     
     # --- 권한 확인 로직
-    if not Project.is_member(task.project_id, current_user.id):
-        return jsonify({'success': False, 'message': '삭제할 권한이 없습니다.'}), 403
+    user_role = Project.get_user_role(task.project_id, current_user.id)
+    if user_role != '팀장':
+        return jsonify({'success': False, 'message': '작업을 삭제할 권한이 없습니다.'}), 403
 
-    project_id = task.project_id
     task.delete()
-    flash('작업이 삭제되었습니다.')
     return jsonify({'success': True, 'message': '작업이 삭제되었습니다.'})
 
 # Chart.js 데이터
@@ -323,9 +332,12 @@ def edit_project(project_id):
 @login_required
 def edit_task(task_id):
     task = Task.get(task_id)
+    if not task:
+        return jsonify({'success': False, 'message': '작업을 찾을 수 없습니다.'}), 404
     # 권한 확인: 이 작업이 속한 프로젝트의 멤버인지 확인
-    if not task or not Project.is_member(task.project_id, current_user.id):
-        return jsonify({'success': False, 'message': '수정할 권한이 없습니다.'}), 403
+    user_role = Project.get_user_role(task.project_id, current_user.id)
+    if user_role != '팀장':
+        return jsonify({'success': False, 'message': '작업을 수정할 권한이 없습니다.'}), 403
 
     name = request.form.get('task_name')
     start_date = request.form.get('start_date')
@@ -344,3 +356,59 @@ def edit_task(task_id):
             'end_date': end_date
         }
     })
+
+# 프로젝트에 팀원 추가
+@bp.route('/api/project/<int:project_id>/invite', methods=['POST'])
+@login_required
+def invite_member(project_id):
+    project = Project.get(project_id)
+    # 권한 확인: 현재 사용자가 프로젝트 생성자(팀장)인지 확인
+    if not project or project.created_by != current_user.id:
+        return jsonify({'success': False, 'message': '팀원을 초대할 권한이 없습니다.'}), 403
+
+    username_to_invite = request.form.get('username')
+    if not username_to_invite:
+        return jsonify({'success': False, 'message': '사용자 이름을 입력해주세요.'}), 400
+    
+    user_to_invite = User.find_by_username(username_to_invite)
+    if not user_to_invite:
+        return jsonify({'success': False, 'message': '존재하지 않는 사용자입니다.'}), 404
+    
+    if Project.is_member(project_id, user_to_invite.id):
+        return jsonify({'success': False, 'message': '이미 프로젝트에 참여하고 있는 사용자입니다.'}), 409
+
+    # 모든 확인이 끝나면 멤버로 추가
+    Project.add_member(project_id, user_to_invite.id)
+    
+    return jsonify({'success': True, 'message': f"'{username_to_invite}' 님을 프로젝트에 초대했습니다."})
+
+# 작업에 담당자 추가
+@bp.route('/api/task/<int:task_id>/assign', methods=['POST'])
+@login_required
+def assign_task(task_id):
+    task = Task.get(task_id)
+    if not task:
+        return jsonify({'success': False, 'message': '작업을 찾을 수 없습니다.'}), 404
+
+    # 권한 확인: 현재 사용자가 팀장인지 확인
+    user_role = Project.get_user_role(task.project_id, current_user.id)
+    if user_role != '팀장':
+        return jsonify({'success': False, 'message': '작업을 할당할 권한이 없습니다.'}), 403
+
+    assignee_id = request.form.get('assignee_id')
+    if not assignee_id:
+        return jsonify({'success': False, 'message': '할당할 팀원을 선택해주세요.'}), 400
+
+    task.assign(assignee_id)
+    
+    # 담당자의 사용자 이름을 찾아 함께 반환
+    assignee_user = User.get(assignee_id)
+    return jsonify({
+        'success': True, 
+        'message': '작업 담당자가 지정되었습니다.',
+        'assignee_name': assignee_user.username if assignee_user else '알 수 없음'
+    })
+
+
+
+

@@ -1,37 +1,144 @@
+// -----------------------------------------------------------------------------
+// 1. 페이지가 로드되면 실행되는 메인 함수
+// -----------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-    // 현재 로그인한 사용자 이름 가져오기
-    const currentUser = document.querySelector('[data-current-user]')?.dataset.currentUser;
+    handlePageLoadMessages();
+    setupEventListeners();
+});
 
-    // --- 새 작업 추가 폼 처리 ---
+// -----------------------------------------------------------------------------
+// 2. 모든 이벤트 리스너를 설정하는 함수
+// -----------------------------------------------------------------------------
+function handlePageLoadMessages() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const message = urlParams.get('message');
+    if (message) {
+        console.log('서버 메시지:', message);
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+    }
+}
+
+function setupEventListeners() {
+    // --- 프로젝트 관련 이벤트 ---
+    const showCreateFormBtn = document.getElementById('show-create-form-btn');
+    if (showCreateFormBtn) {
+        showCreateFormBtn.addEventListener('click', toggleCreateProjectForm);
+    }
+
+    // '수정' 버튼 클릭 시 모달 열기
+    const editProjectBtn = document.getElementById('edit-project-btn');
+    const editProjectModal = document.getElementById('edit-project-modal');
+    if (editProjectBtn) {
+        editProjectBtn.addEventListener('click', () => editProjectModal.showModal());
+    }
+
+    // 모달 안의 'x' 닫기 버튼 클릭 시 모달 닫기
+    const closeBtn = editProjectModal?.querySelector('.close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (event) => {
+            event.preventDefault(); // a 태그의 기본 동작 방지
+            editProjectModal.close();
+        });
+    }
+
+    // --- 프로젝트 수정 폼 이벤트 ---
+    const editProjectForm = document.getElementById('edit-project-form');
+    if (editProjectForm) {
+        editProjectForm.addEventListener('submit', handleProjectEdit);
+    }
+
+    // --- 프로젝트 관리 폼 이벤트 ---
+    const inviteMemberForm = document.getElementById('invite-member-form');
+    if (inviteMemberForm) {
+        inviteMemberForm.addEventListener('submit', handleInviteMember);
+    }
+
+    // --- 작업 추가 폼 이벤트 ---
     const createTaskForm = document.getElementById('create-task-form');
     if (createTaskForm) {
         createTaskForm.addEventListener('submit', handleCreateTask);
     }
-    
-    // --- 작업 목록의 모든 이벤트를 한 곳에서 처리 ---
+
+    // --- 작업 목록(Task List)의 모든 이벤트를 위임하여 처리 ---
     const taskList = document.querySelector('.task-list');
     if (taskList) {
-        // 'click' 이벤트 위임 (아코디언, 댓글 삭제)
         taskList.addEventListener('click', handleTaskListClick);
-        // 'submit' 이벤트 위임 (댓글 추가)
         taskList.addEventListener('submit', handleTaskListSubmit);
-        // 'change' 이벤트 위임 (상태 변경)
         taskList.addEventListener('change', handleTaskListChange);
     }
-});
+}
 
-// --- 이벤트 핸들러 함수들 ---
+// -----------------------------------------------------------------------------
+// 3. 이벤트 핸들러 함수들 (어떤 이벤트가 발생했는지 판단)
+// -----------------------------------------------------------------------------
+// 프로젝트 생성 폼 전환
+function toggleCreateProjectForm() {
+    const createProjectForm = document.getElementById('create-project-form');
+    if (createProjectForm) {
+        const isHidden = createProjectForm.style.display === 'none';
+        createProjectForm.style.display = isHidden ? 'block' : 'none';
+    }
+}
+
+// 프로젝트 수정
+function handleProjectEdit(event) {
+    event.preventDefault();
+    const form = event.target;
+    const modal = document.getElementById('edit-project-modal');
+    const projectId = document.getElementById('gantt_chart_div').dataset.projectId;
+    const formData = new FormData(form);
+
+    fetch(`/api/project/${projectId}/edit`, { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('project-title-display').textContent = `프로젝트: ${data.project.name}`;
+                const countdownElement = document.getElementById('countdown-timer');
+                countdownElement.dataset.startDate = data.project.start_date;
+                countdownElement.dataset.endDate = data.project.end_date;
+                
+                if (typeof initializeCountdown === 'function') initializeCountdown();
+                if (typeof drawChart === 'function') drawChart();
+                
+                modal.close();
+            } else {
+                alert('프로젝트 수정 실패: ' + data.message);
+            }
+        });
+}
+
+// 프로젝트 관리
+function handleInviteMember(event) {
+    event.preventDefault();
+    const form = event.target;
+    const projectId = document.getElementById('gantt_chart_div').dataset.projectId;
+    const url = `/api/project/${projectId}/invite`;
+    const formData = new FormData(form);
+
+    fetch(url, { method: 'POST', body: formData })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        if (data.success) {
+            form.reset();
+        }
+    });
+}
+
+// 작업 추가
 function handleCreateTask(event) {
     event.preventDefault();
-    const formData = new FormData(this);
-    const url = this.action;
+    const form = event.target;
+    const formData = new FormData(form);
+    const url = form.action;
 
     fetch(url, { method: 'POST', body: formData })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 addTaskToList(data.task);
-                this.reset();
+                form.reset();
                 updateProjectStats();
             } else {
                 alert('작업 추가 실패: ' + data.message);
@@ -40,115 +147,134 @@ function handleCreateTask(event) {
         .catch(error => console.error('Error:', error));
 }
 
+// 작업 목록
 function handleTaskListClick(event) {
-    // 아코디언 열기/닫기
-    const summary = event.target.closest('.task-summary');
-    if (summary) {
-        const details = summary.nextElementSibling;
-        if (details && details.classList.contains('task-details')) {
-            details.classList.toggle('visible');
-            if (details.classList.contains('visible')) {
-                const taskId = details.dataset.taskId;
-                loadComments(taskId, details.querySelector('.comment-list'));
-            }
-        }
-        return; // 다른 click 이벤트와 충돌 방지
+    const target = event.target;
+
+    if (target.closest('.task-summary')) {
+        toggleTaskAccordion(target.closest('.task-summary'));
     }
-
-    // 댓글 삭제 버튼 클릭
-    if (event.target.classList.contains('delete-comment-btn')) {
-        const commentId = event.target.dataset.commentId;
-        if (confirm('정말로 이 댓글을 삭제하시겠습니까?')) {
-            deleteComment(commentId, event.target.closest('li'));
-        }
-        return;
+    else if (target.classList.contains('edit-task-btn')) {
+        toggleEditMode(target.closest('.task-details'), true);
     }
-
-    // --- '수정' 버튼 클릭 처리 ---
-    if (event.target.classList.contains('edit-task-btn')) {
-        const detailsDiv = event.target.closest('.task-details');
-        toggleEditMode(detailsDiv, true);
+    else if (target.classList.contains('cancel-edit-btn')) {
+        toggleEditMode(target.closest('.task-details'), false);
     }
-
-    // --- '취소' 버튼 클릭 처리 ---
-    if (event.target.classList.contains('cancel-edit-btn')) {
-        const detailsDiv = event.target.closest('.task-details');
-        toggleEditMode(detailsDiv, false);
-    }
-
-    // --- 작업 삭제 버튼 클릭 처리 ---
-    if (event.target.closest('.delete-task-form')) {
-        event.preventDefault(); // form의 기본 동작 방지
-        const form = event.target.closest('.delete-task-form');
-        const listItem = form.closest('li');
-        const url = form.action;
-
+    else if (target.closest('.delete-task-form')) {
+        event.preventDefault();
         if (confirm('정말로 이 작업을 삭제하시겠습니까?')) {
-            fetch(url, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        listItem.remove();
-                        updateProjectStats();
-                    } else {
-                        alert('작업 삭제 실패: ' + data.message);
-                    }
-                })
-                .catch(error => console.error('Error:', error));
+            deleteTask(target.closest('.delete-task-form'));
+        }
+    }
+    else if (target.classList.contains('edit-comment-btn')) {
+        toggleCommentEditMode(target.closest('li'), true);
+    }
+    else if (target.classList.contains('cancel-edit-comment-btn')) {
+        toggleCommentEditMode(target.closest('li'), false);
+    }
+    else if (target.classList.contains('delete-comment-btn')) {
+        if (confirm('정말로 이 댓글을 삭제하시겠습니까?')) {
+            deleteComment(target.dataset.commentId, target.closest('li'));
         }
     }
 }
 
+// 작업 목록 이벤트
 function handleTaskListSubmit(event) {
-    // 댓글 폼 제출
-    if (event.target.classList.contains('comment-form')) {
-        event.preventDefault();
-        const form = event.target;
-        const taskId = form.closest('.task-details').dataset.taskId;
-        const contentInput = form.querySelector('input[name="content"]');
-        
-        addComment(taskId, contentInput.value, form.closest('.comment-section'));
-        contentInput.value = '';
+    event.preventDefault();
+    const form = event.target;
+
+    if (form.classList.contains('edit-task-form')) {
+        handleTaskEdit(form);
     }
-
-    // --- '작업 수정 저장' 폼 제출 처리 ---
-    if (event.target.classList.contains('edit-task-form')) {
-        event.preventDefault();
-        const form = event.target;
-        const detailsDiv = form.closest('.task-details');
-        const taskId = detailsDiv.dataset.taskId;
-        const formData = new FormData(form);
-
-        fetch(`/api/task/${taskId}/edit`, { method: 'POST', body: formData })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // 성공 시 UI 업데이트 후 보기 모드로 전환
-                    // console.log(data.task);
-                    updateTaskView(detailsDiv, data.task);
-                    toggleEditMode(detailsDiv, false);
-                    drawChart(); // 간트 차트 갱신
-                } else {
-                    alert('작업 수정 실패: ' + data.message);
-                }
-            });
+    else if (form.classList.contains('comment-form')) {
+        addComment(form);
     }
-
+    else if (form.classList.contains('edit-comment-form')) {
+        handleCommentEdit(form);
+    }
 }
 
+// 작업 목록 변경
 function handleTaskListChange(event) {
-    // 상태 변경 select
-    if (event.target.classList.contains('task-status-select')) {
-        const detailsDiv = event.target.closest('.task-details');
-        const taskId = detailsDiv.dataset.taskId;
-        const newStatus = event.target.value;
+    const select = event.target;
 
-        updateTaskStatus(taskId, newStatus, detailsDiv);
+    if (select.classList.contains('task-status-select')) {
+        updateTaskStatus(select);
+    }
+    else if (select.classList.contains('assignee-select')) {
+        assignTask(select);
     }
 }
 
+// 작업 수정
+function handleTaskEdit(form) {
+    const detailsDiv = form.closest('.task-details');
+    const taskId = detailsDiv.dataset.taskId;
+    const formData = new FormData(form);
 
-// --- 기능 함수들 ---
+    fetch(`/api/task/${taskId}/edit`, { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateTaskView(detailsDiv, data.task);
+                toggleEditMode(detailsDiv, false);
+                drawChart();
+            } else {
+                alert('작업 수정 실패: ' + data.message);
+            }
+        });
+}
+
+// 댓글 추가
+function handleCommentEdit(form) {
+    const commentLi = form.closest('li');
+    const commentId = form.dataset.commentId;
+    
+    fetch(`/api/comment/${commentId}/edit`, { method: 'POST', body: new FormData(form) })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            commentLi.querySelector('.comment-content').textContent = data.new_content;
+            toggleCommentEditMode(commentLi, false);
+        } else {
+            alert('댓글 수정 실패: ' + data.message);
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// 4. 실제 동작(AJAX 등)을 수행하는 기능 함수들
+// -----------------------------------------------------------------------------
+// 작업 목록
+function toggleTaskAccordion(summaryElement) {
+    const details = summaryElement.nextElementSibling;
+    if (details && details.classList.contains('task-details')) {
+        details.classList.toggle('visible');
+        if (details.classList.contains('visible')) {
+            const taskId = details.dataset.taskId;
+            loadComments(taskId, details.querySelector('.comment-list'));
+        }
+    }
+}
+
+// 작업 삭제
+function deleteTask(form) {
+    const listItem = form.closest('li');
+    const url = form.action;
+    fetch(url, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                listItem.remove();
+                updateProjectStats();
+            } else {
+                alert('작업 삭제 실패: ' + data.message);
+            }
+        });
+}
+
+// 작업 추가
 function addTaskToList(task) {
     const taskList = document.querySelector('.task-list');
     const noTaskLi = taskList.querySelector('.no-tasks');
@@ -169,6 +295,7 @@ function addTaskToList(task) {
     taskList.appendChild(clone);
 }
 
+// 작업 상태 변경
 function updateTaskStatus(taskId, newStatus, detailsDiv) {
     const formData = new FormData();
     formData.append('status', newStatus);
@@ -204,6 +331,7 @@ function updateTaskStatus(taskId, newStatus, detailsDiv) {
     .catch(error => console.error('Error:', error));
 }
 
+// 작업 상태 변경
 function loadComments(taskId, commentListElement) {
     // 현재 사용자의 이름과 역할을 모두 가져옵니다.
     const currentUser = document.querySelector('[data-current-user]').dataset.currentUser;
@@ -232,6 +360,7 @@ function loadComments(taskId, commentListElement) {
         });
 }
 
+// 댓글 추가
 function addComment(taskId, content, commentSection) {
     const formData = new FormData();
     formData.append('content', content);
@@ -257,6 +386,7 @@ function addComment(taskId, content, commentSection) {
         });
 }
 
+// 댓글 삭제
 function deleteComment(commentId, listItemElement) {
     fetch(`/api/comments/${commentId}/delete`, { method: 'POST' })
         .then(response => response.json())
@@ -269,6 +399,7 @@ function deleteComment(commentId, listItemElement) {
         });
 }
 
+// 프로젝트 상태 업데이트
 function updateProjectStats() {
     const chartCanvas = document.getElementById('gantt_chart_div');
     if (!chartCanvas) return;
@@ -298,42 +429,7 @@ function updateProjectStats() {
     }
 }
 
-// --- 프로젝트 수정 모달 처리 ---
-const editProjectBtn = document.getElementById('edit-project-btn');
-const editProjectModal = document.getElementById('edit-project-modal');
-const editProjectForm = document.getElementById('edit-project-form');
-
-if (editProjectBtn) {
-    editProjectBtn.addEventListener('click', () => {
-        editProjectModal.showModal();
-    });
-}
-
-if (editProjectForm) {
-    editProjectForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const projectId = document.getElementById('gantt_chart_div').dataset.projectId;
-        const formData = new FormData(editProjectForm);
-        
-        fetch(`/api/project/${projectId}/edit`, { method: 'POST', body: formData })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // 화면의 프로젝트 정보 업데이트
-                    document.getElementById('project-title-display').textContent = `프로젝트: ${data.project.name}`;
-                    // (기간, 카운트다운, 차트 등 다른 정보도 업데이트 필요)
-                    
-                    editProjectModal.close();
-                    // 페이지를 새로고침하여 모든 변경사항(차트, 카운트다운 등)을 반영하는 것이 가장 간단합니다.
-                    location.reload();
-                } else {
-                    alert('프로젝트 수정 실패: ' + data.message);
-                }
-            });
-    });
-}
-
-// 보기/수정 모드를 전환하는 함수
+// 작업 수정 모드로 전환
 function toggleEditMode(detailsDiv, isEdit) {
     const viewMode = detailsDiv.querySelector('.view-mode');
     const editForm = detailsDiv.querySelector('.edit-task-form');
@@ -355,11 +451,35 @@ function toggleEditMode(detailsDiv, isEdit) {
     }
 }
 
-// 수정된 내용으로 화면을 업데이트하는 함수
+// 작업 상태 업데이트
 function updateTaskView(detailsDiv, task) {
     const startDate = task.start_date.replace('T', ' ');
     const endDate = task.end_date.replace('T', ' ');
     
     detailsDiv.closest('li').querySelector('.task-summary span').textContent = task.name;
     detailsDiv.querySelector('.task-dates').textContent = `${startDate} ~ ${endDate}`;
+}
+
+// 담당자 지정
+function assignTask(taskId, assigneeId, detailsDiv) {
+    const formData = new FormData();
+    formData.append('assignee_id', assigneeId);
+
+    fetch(`/api/task/${taskId}/assign`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 성공 시, 보기 모드의 담당자 이름을 업데이트합니다.
+            const assigneeNameElement = detailsDiv.querySelector('.assignee-name');
+            if (assigneeNameElement) {
+                assigneeNameElement.textContent = data.assignee_name;
+            }
+            alert(data.message);
+        } else {
+            alert('담당자 지정 실패: ' + data.message);
+        }
+    });
 }

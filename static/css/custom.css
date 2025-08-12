@@ -2,6 +2,8 @@
 main.container {
     max-width: 1120px;
     padding-top: 1.5rem;
+    padding-left: 1rem;  /* 항상 최소한의 왼쪽 여백 유지 */
+    padding-right: 1rem; /* 항상 최소한의 오른쪽 여백 유지 */
 }
 
 /* 대시보드와 프로젝트 상세 페이지에서 사용할 그리드 컨테이너 */
@@ -23,6 +25,8 @@ main.container {
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    
+    justify-content: space-between;
     
     /* 디자인 관련 스타일 */
     border-bottom: 1px solid var(--contrast-border-color);

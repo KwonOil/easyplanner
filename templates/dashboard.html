@@ -17,7 +17,9 @@
                 {% endfor %}
             </ul>
             {% if current_user.role == '프로젝트 관리자' %}
-                <form action="{{ url_for('project.create_project') }}" method="POST">
+                <button id="show-create-form-btn">새 프로젝트 생성</button>
+
+                <form id="create-project-form" action="{{ url_for('project.create_project') }}" method="POST" style="display: none;">
                     <input type="text" name="project_name" placeholder="새 프로젝트 이름" required>
 
                     <label for="start_date">시작일</label>
@@ -28,6 +30,7 @@
                     <button type="submit">생성하기</button>
                 </form>
             {% endif %}
+
         </article>
 
         <article>
@@ -37,7 +40,12 @@
             </hgroup>
             <ul>
                 {% for task in tasks %}
-                    <li>{{ task.task_name }} (상태: {{ task.status }})</li>
+                    <li>
+                        <a href="{{ url_for('project.project_detail', project_id=task.project_id) }}">
+                            <strong>{{ task.name }}</strong> ({{ task.project_name }})
+                        </a>
+                        <small>상태: {{ task.status }}</small>
+                    </li>
                 {% else %}
                     <li>할당된 작업이 없습니다.</li>
                 {% endfor %}

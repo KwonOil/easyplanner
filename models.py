@@ -190,7 +190,7 @@ class Project:
         finally:
             db.close()
 
-    # 프로젝트에 사용자 추가
+    # 프로젝트에 멤버인지 확인
     @staticmethod
     def is_member(project_id, user_id):
         db = get_db()
@@ -203,7 +203,44 @@ class Project:
             return cursor.fetchone() is not None
         finally:
             db.close()
-    
+
+    # 프로젝트에 사용자 추가
+    @staticmethod
+    def add_member(project_id, user_id):
+        """프로젝트에 새로운 팀원을 추가합니다."""
+        db = get_db()
+        try:
+            # 이미 멤버인지 확인하는 로직을 추가하면 더 좋습니다.
+            cursor = db.cursor()
+            cursor.execute(
+                "INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)",
+                (project_id, user_id, '팀원') # 새로운 멤버는 '팀원' 역할
+            )
+            db.commit()
+        except db.IntegrityError:
+            # 이미 멤버인 경우 PRIMARY KEY 제약 조건으로 인해 에러가 발생합니다.
+            # 이 경우 그냥 무시하고 넘어갈 수 있습니다.
+            print(f"User {user_id} is already a member of project {project_id}.")
+        finally:
+            db.close()
+
+    # 프로젝트에 속한 멤버들의 id와 username을 가져오기
+    @staticmethod
+    def get_members(project_id):
+        """프로젝트에 속한 모든 멤버의 id와 username을 가져옵니다."""
+        db = get_db()
+        try:
+            cursor = db.cursor()
+            cursor.execute("""
+                SELECT u.id, u.username
+                FROM users u
+                JOIN project_members pm ON u.id = pm.user_id
+                WHERE pm.project_id = ?
+            """, (project_id,))
+            return cursor.fetchall() # [(1, 'userA'), (2, 'userB')] 형태의 리스트 반환
+        finally:
+            db.close()
+
     # 프로젝트 삭제
     def delete(self):
         """프로젝트를 DB에서 삭제합니다."""
@@ -251,7 +288,11 @@ class Task:
         db = get_db()
         try:
             cursor = db.cursor()
-            cursor.execute("SELECT * FROM tasks WHERE project_id = ?", (project_id,))
+            cursor.execute("""
+                SELECT * FROM tasks 
+                WHERE project_id = ? 
+                ORDER BY start_date ASC
+            """, (project_id,))
             tasks_data = cursor.fetchall()
             return [Task(id=t[0], project_id=t[1], task_name=t[2], 
                         start_date=t[3], end_date=t[4], status=t[5], 
@@ -319,11 +360,29 @@ class Task:
         db = get_db()
         try:
             cursor = db.cursor()
-            cursor.execute("SELECT * FROM tasks WHERE assignee_id = ?", (user_id,))
+            cursor.execute("""
+                SELECT t.id, t.project_id, t.task_name, t.start_date, t.end_date, t.status, t.assignee_id, p.project_name
+                FROM tasks t
+                JOIN projects p ON t.project_id = p.id
+                WHERE t.assignee_id = ?
+                ORDER BY t.start_date ASC
+            """, (user_id,))
             tasks_data = cursor.fetchall()
-            return [Task(id=t[0], project_id=t[1], task_name=t[2], 
-                        start_date=t[3], end_date=t[4], status=t[5], 
-                        assignee_id=t[6]) for t in tasks_data]
+            return tasks_data
+        finally:
+            db.close()
+
+    # 작업에 담당자를 할당
+    def assign(self, user_id):
+        """작업에 담당자를 할당합니다."""
+        db = get_db()
+        try:
+            cursor = db.cursor()
+            cursor.execute(
+                "UPDATE tasks SET assignee_id = ? WHERE id = ?",
+                (user_id, self.id)
+            )
+            db.commit()
         finally:
             db.close()
 

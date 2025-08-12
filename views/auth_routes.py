@@ -24,14 +24,13 @@ def register():
         user_count = cursor.fetchone()[0]
         db.close()
 
-        role = '프로젝트 관리자' if user_count == 0 else '팀원'
+        role = '팀원'
 
         new_user = User(id=None, username=username, password_hash=None, role=role)
         new_user.set_password(password)
         new_user.create()
 
-        flash('회원가입이 완료되었습니다. 로그인해주세요.')
-        return redirect(url_for('auth.login')) # url_for에 블루프린트 이름 'auth' 추가
+        return redirect(url_for('auth.login', message='회원가입이 완료되었습니다. 로그인해주세요.'))
     
     return render_template('register.html')
 
@@ -47,8 +46,7 @@ def login():
             login_user(user)
             return redirect(url_for('project.dashboard')) # 'project' 블루프린트로 이동
         
-        flash('사용자 이름 또는 비밀번호가 올바르지 않습니다.')
-        return redirect(url_for('auth.login'))
+        return redirect(url_for('auth.login', message='사용자 이름 또는 비밀번호가 올바르지 않습니다.'))
 
     return render_template('login.html')
 
@@ -56,6 +54,6 @@ def login():
 @bp.route('/logout')
 @login_required
 def logout():
+    
     logout_user()
-    flash('성공적으로 로그아웃되었습니다.')
-    return redirect(url_for('auth.login'))
+    return redirect(url_for('auth.login', message='성공적으로 로그아웃되었습니다.'))

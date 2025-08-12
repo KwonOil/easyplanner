@@ -12,8 +12,11 @@
             <div class="task-details" data-task-id="">
                 <div class="view-mode">
                     <p><strong>기간:</strong> <span class="task-dates"></span></p>
+                    {% if user_role == '팀장' %}
                     <button class="edit-task-btn">수정</button>
+                    {% endif %}
                 </div>
+                {% if user_role == '팀장' %}
                 <form class="edit-task-form" style="display: none;">
                     <input type="text" name="task_name" required>
                     <div class="grid">
@@ -23,7 +26,6 @@
                     <button type="submit">저장</button>
                     <button type="button" class="cancel-edit-btn">취소</button>
                 </form>
-
                 <hr>
                 <div>
                     <strong>상태 변경/삭제:</strong>
@@ -34,10 +36,22 @@
                             <option value="완료">완료</option>
                         </select>
                     </form>
+                    
                     <form class="delete-task-form" method="POST" style="display: inline;">
                         <button type="submit">삭제</button>
                     </form>
+                    {% if user_role == '팀장' %}
+                        <form class="assign-task-form" style="display: inline;">
+                            <select name="assignee_id" class="assignee-select">
+                                <option value="">담당자 지정</option>
+                                {% for member in members %}
+                                <option value="{{ member[0] }}">{{ member[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    {% endif %}
                 </div>
+                {% endif %}
                 <hr>
                 <div class="comment-section">
                     <strong>댓글</strong>
@@ -52,6 +66,7 @@
     </template>
     <!-- /template -->
 
+    <!-- 프로젝트 상세 -->
     <article>
         <hgroup>
             <h2 id="project-title-display">프로젝트: {{ project.project_name }}</h2>
@@ -104,6 +119,7 @@
         </div>
     </article>
 
+    <!-- 타임라인 -->
     <article class="gantt-container">
         <h3>프로젝트 타임라인</h3>
         <div class="chart-wrapper">
@@ -111,6 +127,7 @@
         </div>
     </article>
 
+    <!-- 작업 관리 -->
     <div class="grid-container" data-current-user="{{ current_user.username }}" data-user-role="{{ user_role }}">
         <article>
             <h3>작업 목록</h3>
@@ -128,8 +145,11 @@
                                 <strong>기간:</strong>
                                 <span class="task-dates">{{ task.start_date.replace('T', ' ') }} ~ {{ task.end_date.replace('T', ' ') }}</span>
                             </p>
+                            {% if user_role == '팀장' %}
                             <button class="edit-task-btn">수정</button>
+                            {% endif %}
                         </div>
+                        {% if user_role == '팀장' %}
                         <form class="edit-task-form" style="display: none;">
                             <input type="text" name="task_name" value="{{ task.task_name }}" required>
                             <div class="grid">
@@ -139,8 +159,6 @@
                             <button type="submit">저장</button>
                             <button type="button" class="cancel-edit-btn">취소</button>
                         </form>
-
-                        <hr>
                         <div>
                             <strong>상태 변경/삭제:</strong>
                             <form class="update-status-form" action="{{ url_for('project.update_task_status', task_id=task.id) }}" method="POST" style="display: inline;">
@@ -153,7 +171,18 @@
                             <form class="delete-task-form" action="{{ url_for('project.delete_task', task_id=task.id) }}" method="POST" style="display: inline;">
                                 <button type="submit">삭제</button>
                             </form>
+                            {% if user_role == '팀장' %}
+                            <form class="assign-task-form" style="display: inline;">
+                                <select name="assignee_id" class="assignee-select">
+                                    <option value="">담당자 지정</option>
+                                    {% for member in members %}
+                                        <option value="{{ member[0] }}" {% if member[0] == task.assignee_id %}selected{% endif %}>{{ member[1] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                            {% endif %}
                         </div>
+                        {% endif %}
                         <hr>
                         <div class="comment-section">
                             <strong>댓글</strong>
@@ -172,6 +201,7 @@
             </ul>
         </article>
         
+        {% if user_role == '팀장' %}
         <article>
             <h3>새 작업 추가</h3>
             <form id="create-task-form" action="{{ url_for('project.create_task', project_id=project.id) }}" method="POST">
@@ -185,16 +215,23 @@
 
                 <button type="submit">추가하기</button>
             </form>
+
             <hr>
             <h3>프로젝트 관리</h3>
             {% if current_user.id == project.created_by %}
-                <form action="{{ url_for('project.delete_project', project_id=project.id) }}" method="POST">
+                <form id="invite-member-form">
+                    <label for="username_to_invite">팀원 초대하기</label>
+                    <input type="search" id="username_to_invite" name="username" placeholder="초대할 사용자 이름" required>
+                    <button type="submit">초대</button>
+                </form>
+                <form class="delete-project-form" action="{{ url_for('project.delete_project', project_id=project.id) }}" method="POST">
                     <button class="secondary" onclick="return confirm('정말로 이 프로젝트를 삭제하시겠습니까? 되돌릴 수 없습니다.');">프로젝트 삭제</button>
                 </form>
             {% else %}
-                <p>프로젝트 삭제는 생성자만 가능합니다.</p>
+                <p>프로젝트 관리는 생성자만 가능합니다.</p>
             {% endif %}
         </article>
+        {% endif %}
     </div>
 
     <script defer src="{{ url_for('static', filename='js/countdown.js') }}"></script>
